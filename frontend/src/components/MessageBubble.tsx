@@ -2,11 +2,12 @@ import type { Message } from '../types/message'
 
 interface MessageBubbleProps {
   message: Message
+  currentUserId: string
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
-  const isOutgoing = message.senderId === 'alice'
-  const displayName = isOutgoing ? 'You' : message.senderName ?? 'Bob'
+export function MessageBubble({ message, currentUserId }: MessageBubbleProps) {
+  const isOutgoing = message.senderId === currentUserId
+  const displayName = isOutgoing ? 'You' : message.senderName ?? 'Someone'
 
   return (
     <article

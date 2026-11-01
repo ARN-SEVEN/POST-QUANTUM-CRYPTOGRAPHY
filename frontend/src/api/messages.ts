@@ -39,14 +39,35 @@ async function request<T>(path: string, token: string, init?: RequestInit): Prom
   return (await response.json()) as T
 }
 
-export async function listMessages(token: string): Promise<MessageOut[]> {
-  return request<MessageOut[]>('/messages', token)
+/** Row shape returned by the backend; snake_case, unlike the camelCase UI model. */
+interface RawMessageOut {
+  id: string
+  sender_id: string
+  sender_name: string | null
+  content: string
+  sent_at: string
 }
 
-export async function sendMessage(token: string, content: string): Promise<MessageOut> {
-  return request<MessageOut>('/messages', token, {
+function toMessageOut(row: RawMessageOut): MessageOut {
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    senderName: row.sender_name,
+    content: row.content,
+    sentAt: row.sent_at,
+  }
+}
+
+export async function listMessages(token: string, chatId: string): Promise<MessageOut[]> {
+  const rows = await request<RawMessageOut[]>(`/messages?chat=${encodeURIComponent(chatId)}`, token)
+  return rows.map(toMessageOut)
+}
+
+export async function sendMessage(token: string, content: string, chatId: string): Promise<MessageOut> {
+  const row = await request<RawMessageOut>('/messages', token, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, chat_id: chatId }),
   })
+  return toMessageOut(row)
 }
 export type { MessageOut } from '../types/message'

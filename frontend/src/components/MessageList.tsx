@@ -6,6 +6,7 @@ interface MessageListProps {
   messages: Message[]
   isLoading: boolean
   loadError: string | null
+  currentUserId: string
 }
 
 function formatDay(isoDate: string): string {
@@ -18,7 +19,7 @@ function formatDay(isoDate: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
-export function MessageList({ messages, isLoading, loadError }: MessageListProps) {
+export function MessageList({ messages, isLoading, loadError, currentUserId }: MessageListProps) {
   const endOfMessagesRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export function MessageList({ messages, isLoading, loadError }: MessageListProps
       {!isLoading &&
         !loadError &&
         messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble key={message.id} message={message} currentUserId={currentUserId} />
         ))}
       {!isLoading && !loadError && messages.length === 0 && <div className="empty-state-wrapper"></div>}
       <div ref={endOfMessagesRef} aria-hidden="true" />
