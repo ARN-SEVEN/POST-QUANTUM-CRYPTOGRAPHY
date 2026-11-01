@@ -42,11 +42,13 @@ Interactive docs: http://127.0.0.1:8000/docs
 
 ## Endpoints
 
-| Method | Path           | Purpose                                        |
-| ------ | -------------- | ---------------------------------------------- |
-| GET    | `/health`      | Liveness check, needs no credentials           |
-| POST   | `/auth/signup` | Create an account, returns a token             |
-| POST   | `/auth/login`  | Verify credentials, returns a token            |
+| Method | Path                 | Purpose                                        |
+| ------ | -------------------- | ---------------------------------------------- |
+| GET    | `/health`            | Liveness check, needs no credentials           |
+| POST   | `/auth/signup`       | Create an account, returns a token             |
+| POST   | `/auth/login`        | Verify credentials, returns a token            |
+| GET    | `/messages`          | List the 50 newest messages, authenticated     |
+| POST   | `/messages`          | Send a message, authenticated                  |
 | GET    | `/messages`    | Return messages (Bearer token required)        |
 | POST   | `/messages`   | Send a message (Bearer token required)         |
 

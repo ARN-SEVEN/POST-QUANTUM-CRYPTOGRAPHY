@@ -1,4 +1,8 @@
-export function Header() {
+interface HeaderProps {
+  currentUser: string
+}
+
+export function Header({ currentUser }: HeaderProps) {
   return (
     <header className="app-header">
       <div className="brand" aria-label="QuantumChat">
@@ -18,15 +22,13 @@ export function Header() {
         <span className="brand-name">
           Quantum<span>Chat</span>
         </span>
-      </div>
-
-      <div className="contact" aria-label="Bob is online">
+      </div>          <div className="contact" aria-label="Current user is online">
         <div className="avatar" aria-hidden="true">
-          B
+          {currentUser.charAt(0)}
           <span className="online-dot" />
         </div>
         <div className="contact-copy">
-          <strong>Bob</strong>
+          <strong>{currentUser}</strong>
           <span>
             <i aria-hidden="true" />
             Online

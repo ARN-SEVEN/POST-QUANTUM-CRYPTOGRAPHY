@@ -5,16 +5,17 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
-  const isOutgoing = message.sender === 'alice'
+  const isOutgoing = message.senderId === 'alice'
+  const displayName = isOutgoing ? 'You' : message.senderName ?? 'Bob'
 
   return (
     <article
       className={`message-row ${isOutgoing ? 'message-row--outgoing' : ''}`}
-      aria-label={`${isOutgoing ? 'You' : 'Bob'} at ${message.timestamp}`}
+      aria-label={`${displayName} at ${new Date(message.sentAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
     >
       <div className={`message-bubble ${isOutgoing ? 'message-bubble--outgoing' : ''}`}>
         <p>{message.content}</p>
-        <time>{message.timestamp}</time>
+        <time>{new Date(message.sentAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</time>
       </div>
     </article>
   )

@@ -1,46 +1,52 @@
-import type { Message } from '../types/message'
+/** Messages request helpers for the auth API.
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000').replace(/\/+$/, '')
+All requests go to the backend at VITE_API_URL, or http://127.0.0.1:8000 by
+default. Messages are scoped to the authenticated user: the token passed in the
+Authorization header is the one returned by POST /auth/login.
+*/
 
-async function fetchWithAuth(path: string, init?: RequestInit, auth: { token: string }) {
-  return fetch(`${API_BASE_URL}${path}`, {
-    ...init,
+import type { MessageOut } from '../types/message'
+
+async function readMessageError(response: Response): Promise<string> {
+  try {
+    const body = await response.json()
+
+    if (typeof body?.detail === 'string') return body.detail
+    if (Array.isArray(body?.detail) && typeof body.detail[0]?.msg === 'string') {
+      return body.detail[0].msg
+    }
+  } catch {
+    // Non-JSON error body; fall through to a generic message.
+  }
+
+  if (response.status === 503) return 'The auth server is not configured yet.'
+  return `Request failed (HTTP ${response.status}).`
+}
+
+async function request<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'}${path}`, {
     headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${auth.token}`,
-    } as RequestInit['headers'],
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    ...init,
+  })
+
+  if (!response.ok) {
+    throw new Error(await readMessageError(response))
+  }
+
+  return (await response.json()) as T
+}
+
+export async function listMessages(token: string): Promise<MessageOut[]> {
+  return request<MessageOut[]>('/messages', token)
+}
+
+export async function sendMessage(token: string, content: string): Promise<MessageOut> {
+  return request<MessageOut>('/messages', token, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
   })
 }
-
-function messageFromRow(row: Record<string, unknown>): Message {
-  const sentAt = new Date(row.sent_at as string)
-  return {
-    id: String(row.id),
-    sender: (row.sender as { display_name?: string } | null)?.display_name ?? 'Unknown',
-    content: String(row.content),
-    timestamp: sentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-  }
-}
-
-export async function fetchMessages(auth: { token: string }): Promise<Message[]> {
-  const response = await fetchWithAuth('/messages', undefined, auth)
-  if (!response.ok) {
-    if (response.status === 503) throw new Error('Messages are not available yet.')
-    throw new Error(`Could not load messages (HTTP ${response.status}).`)
-  }
-  const data = (await response.json()) as { messages: Array<Record<string, unknown>> }
-  return data.messages.map(messageFromRow)
-}
-
-export async function sendMessage(content: string, auth: { token: string }): Promise<Message> {
-  const response = await fetchWithAuth('/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  }, auth)
-  if (!response.ok) {
-    throw new Error(`Could not send the message (HTTP ${response.status}).`)
-  }
-  const row = (await response.json()) as Record<string, unknown>
-  return messageFromRow(row)
-}
+export type { MessageOut } from '../types/message'

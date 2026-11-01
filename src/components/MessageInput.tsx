@@ -1,28 +1,30 @@
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
 
 interface MessageInputProps {
-  onSendMessage: (content: string) => void
+  isSending: boolean
+  onSendMessage: (content: string) => Promise<void>
 }
 
-export function MessageInput({ onSendMessage }: MessageInputProps) {
+export function MessageInput({ isSending, onSendMessage }: MessageInputProps) {
   const [value, setValue] = useState('')
-  const canSend = value.trim().length > 0
+  const [error, setError] = useState('')
+  const canSend = value.trim().length > 0 && !isSending
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = value.trim()
 
     if (!content) return
 
-    onSendMessage(content)
-    setValue('')
+    setError('')
+    onSendMessage(content).finally(() => setValue(''))
   }
 
   return (
     <footer className="composer">
       <form onSubmit={handleSubmit} className="composer-form">
         <label htmlFor="message-input" className="sr-only">
-          Type a message to Bob
+          Type a message
         </label>
         <input
           id="message-input"
@@ -30,6 +32,7 @@ export function MessageInput({ onSendMessage }: MessageInputProps) {
           onChange={(event) => setValue(event.target.value)}
           placeholder="Type a message..."
           autoComplete="off"
+          disabled={isSending}
         />
         <button type="submit" disabled={!canSend}>
           <span>Send</span>
@@ -45,6 +48,7 @@ export function MessageInput({ onSendMessage }: MessageInputProps) {
           </svg>
         </button>
       </form>
+      {error && <p className="message-error" role="alert">{error}</p>}
     </footer>
   )
 }

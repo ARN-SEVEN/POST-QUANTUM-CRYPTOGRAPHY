@@ -17,6 +17,7 @@ import psycopg
 from app.config import get_settings
 
 SCHEMA_FILE = Path(__file__).resolve().parent.parent / "supabase" / "schema.sql"
+MESSAGES_TABLE_FILE = Path(__file__).resolve().parent.parent / "supabase" / "messages.sql"
 
 
 def split_statements(sql: str) -> list[str]:
@@ -44,12 +45,15 @@ def main() -> int:
         with psycopg.connect(settings.database_url, connect_timeout=10) as connection:
             for statement in statements:
                 connection.execute(statement)
+            for statement in MESSAGES_TABLE_FILE.read_text(encoding="utf-8").split("\n"):
+                if statement.strip():
+                    connection.execute(statement.strip())
             connection.commit()
     except psycopg.Error as error:
         print(f"Could not apply {SCHEMA_FILE.name}: {error}", file=sys.stderr)
         return 1
 
-    print(f"Applied {len(statements)} statements from {SCHEMA_FILE.name}.")
+    print(f"Applied {len(statements)} statements from {SCHEMA_FILE.name} and the messages table.")
     return 0
 
 
