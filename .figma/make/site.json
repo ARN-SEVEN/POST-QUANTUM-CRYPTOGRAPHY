@@ -1,0 +1,14 @@
+{
+  "title": "POST-QUANTUM-CRYPTOGRAPHY",
+  "description": "",
+  "language": "en",
+  "robots": {
+    "index": true
+  },
+  "icons": {
+    "icon": "/favicon.svg"
+  },
+  "analytics": {},
+  "customScripts": {},
+  "accessibility": {}
+}

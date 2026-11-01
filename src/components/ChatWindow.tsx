@@ -21,6 +21,8 @@ export function ChatWindow({ session, onMessageError }: ChatWindowProps) {
   const [messages, setMessages] = useState<MessageOut[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
   const [isSending, setIsSending] = useState(false)
 
   const loadMessages = useCallback(async (silent = false) => {
@@ -37,14 +39,27 @@ export function ChatWindow({ session, onMessageError }: ChatWindowProps) {
     }
   }, [session.accessToken, onMessageError])
 
+  // Initial load on mount.
   useEffect(() => {
-    loadMessages()
+    let cancelled = false
+    loadMessages().finally(() => {
+      if (!cancelled) {
+        setIsLoading(false)
+        setIsRefreshing(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
   }, [loadMessages])
 
   // Refresh every few seconds while the session is active.
   useEffect(() => {
     if (!session.accessToken) return
-    const interval = setInterval(() => loadMessages(true), 4000)
+    const interval = setInterval(() => {
+      setIsRefreshing(true)
+      loadMessages(true).finally(() => setIsRefreshing(false))
+    }, 4000)
     return () => clearInterval(interval)
   }, [session.accessToken, loadMessages])
 
@@ -81,7 +96,7 @@ export function ChatWindow({ session, onMessageError }: ChatWindowProps) {
           <p className="empty-state">No messages yet. Say hello.</p>
         </div>
       ) : (
-        <MessageList messages={messages} isLoading={isLoading} loadError={loadError} />
+        <MessageList messages={messages} isLoading={isRefreshing} loadError={loadError} />
       )}
       <MessageInput isSending={isSending} onSendMessage={handleSendMessage} />
     </main>
