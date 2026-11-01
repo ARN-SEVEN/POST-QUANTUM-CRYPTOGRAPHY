@@ -19,8 +19,20 @@ def _check_content_bytes(content: str) -> str:
 
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=MAX_MESSAGE_BYTES)
+    # "general" (the shared room) or the id of the user this message is for.
+    chat_id: str = Field(default="general", max_length=64)
 
     _validate_content = field_validator("content")(_check_content_bytes)
+
+
+class ChatOut(BaseModel):
+    """One entry in the chat picker: a room or a direct conversation."""
+
+    id: str
+    name: str
+    is_group: bool = False
+    last_message: str | None = None
+    last_message_at: datetime | None = None
 
 
 class MessageOut(BaseModel):

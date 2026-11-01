@@ -6,3 +6,6 @@ __pycache__/
 .env.secrets
 secrets.env
 *.env*
+!.env.example
+.local-dev.db
+.local-dev.db-journal

@@ -10,8 +10,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, status
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from postgrest.exceptions import APIError
 from supabase import Client
@@ -19,12 +21,16 @@ from supabase import Client
 from . import db
 from .config import get_settings
 from .schemas import AuthResponse, LoginRequest, SignUpRequest, UserOut
-from .schemas_messages import MessageCreate, MessageOut
-from .security import decode_access_token, create_access_token, verify_password
+from .schemas_messages import ChatOut, MessageCreate, MessageOut
+from .security import decode_access_token, create_access_token, hash_password, verify_password
 
 USERS_TABLE = "users"
 MESSAGES_TABLE = "messages"
 USER_COLUMNS = "id, email, display_name, created_at, password_hash"
+USER_SUMMARY_COLUMNS = "id, email, display_name"
+MESSAGE_COLUMNS = "id, sender_id, recipient_id, content, sent_at"
+GENERAL_CHAT = "general"
+MAX_MESSAGES = 200
 DUPLICATE_ACCOUNT_MESSAGE = "An account with that email already exists."
 
 logger = logging.getLogger("quantumchat.auth")
@@ -40,6 +46,26 @@ app.add_middleware(
 )
 
 _security = HTTPBearer(auto_error=False)
+
+
+@app.exception_handler(httpx.HTTPError)
+def handle_supabase_transport_error(request: Request, exc: httpx.HTTPError) -> JSONResponse:
+    """Answer 503 when Supabase is unreachable.
+
+    An unhandled exception escapes CORSMiddleware, so the browser sees a 500
+    with no CORS headers and reports a network failure instead of the real
+    cause. Returning a normal JSON response here keeps the headers intact.
+    """
+    logger.warning("Supabase request failed: %s", exc, exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": (
+                "Could not reach Supabase. Check SUPABASE_URL and "
+                "SUPABASE_SERVICE_ROLE_KEY in backend/.env."
+            )
+        },
+    )
 
 
 def get_client() -> Client:
@@ -161,21 +187,104 @@ def login(payload: LoginRequest, client: ClientDep) -> AuthResponse:
     return AuthResponse(access_token=create_access_token(str(record["id"])), user=to_user_out(record))
 
 
-@app.get("/messages", response_model=list[MessageOut])
-def list_messages(current_user: dict[str, Any] = Depends(get_current_user)) -> list[MessageOut]:
+def list_known_users(client: Client) -> list[dict[str, Any]]:
+    return client.table(USERS_TABLE).select(USER_SUMMARY_COLUMNS).execute().data or []
+
+
+def display_name_for(user: dict[str, Any]) -> str:
+    return user.get("display_name") or user["email"]
+
+
+def recent_messages(client: Client) -> list[dict[str, Any]]:
+    """Oldest-first slice of every chat's messages.
+
+    Filtering per conversation happens in Python: it keeps the same code path
+    for Supabase and the local SQLite fallback, and the prototype's volume is
+    small enough that this is cheaper than two query dialects.
+    """
+    rows = (
+        client.table(MESSAGES_TABLE)
+        .select(MESSAGE_COLUMNS)
+        .order("sent_at", desc=False)
+        .execute()
+        .data
+        or []
+    )
+    return rows[-MAX_MESSAGES:]
+
+
+def in_chat(row: dict[str, Any], user_id: str, chat_id: str) -> bool:
+    if chat_id == GENERAL_CHAT:
+        return not row.get("recipient_id")
+    return (row["sender_id"] == user_id and row.get("recipient_id") == chat_id) or (
+        row["sender_id"] == chat_id and row.get("recipient_id") == user_id
+    )
+
+
+def ensure_chat_exists(users: dict[str, dict[str, Any]], chat_id: str) -> None:
+    if chat_id != GENERAL_CHAT and chat_id not in users:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such chat.")
+
+
+def chat_preview(rows: list[dict[str, Any]], user_id: str, chat_id: str) -> dict[str, Any]:
+    matching = [row for row in rows if in_chat(row, user_id, chat_id)]
+    if not matching:
+        return {"last_message": None, "last_message_at": None}
+
+    last = matching[-1]
+    return {"last_message": last["content"], "last_message_at": last["sent_at"]}
+
+
+@app.get("/chats", response_model=list[ChatOut])
+def list_chats(current_user: dict[str, Any] = Depends(get_current_user)) -> list[ChatOut]:
+    """Chats the picker offers: the shared room plus one per other account."""
     client = get_client_from_context()
-    response = (
-        client.table(MESSAGES_TABLE)        .select("id, sender_id, content, sent_at, users(display_name, email)")
-        .order("sent_at", desc=True)
-        .limit(50)
-        .execute())
+    users = list_known_users(client)
+    rows = recent_messages(client)
+    user_id = current_user["id"]
+
+    chats = [
+        ChatOut(
+            id=GENERAL_CHAT,
+            name="General",
+            is_group=True,
+            **chat_preview(rows, user_id, GENERAL_CHAT),
+        )
+    ]
+
+    direct = [
+        ChatOut(id=user["id"], name=display_name_for(user), **chat_preview(rows, user_id, user["id"]))
+        for user in users
+        if user["id"] != user_id
+    ]
+
+    # Most recent conversation first, then everyone with no history yet.
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+    direct.sort(
+        key=lambda chat: (chat.last_message_at is not None, chat.last_message_at or oldest),
+        reverse=True,
+    )
+
+    return [*chats, *direct]
+
+
+@app.get("/messages", response_model=list[MessageOut])
+def list_messages(
+    chat: str = GENERAL_CHAT,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> list[MessageOut]:
+    client = get_client_from_context()
+    users = {user["id"]: user for user in list_known_users(client)}
+    ensure_chat_exists(users, chat)
+
+    rows = [row for row in recent_messages(client) if in_chat(row, current_user["id"], chat)]
 
     messages = []
-    for row in response.data or []:
-        profile = row.pop("users", None) or {}
-        messages.append(to_message_out(row, profile.get("display_name") or profile.get("email") or None))
+    for row in rows:
+        sender = users.get(row["sender_id"])
+        messages.append(to_message_out(row, display_name_for(sender) if sender else None))
 
-    return list(reversed(messages))
+    return messages
 
 
 @app.post("/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
@@ -184,12 +293,16 @@ def post_message(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> MessageOut:
     client = get_client_from_context()
+    users = {user["id"]: user for user in list_known_users(client)}
+    ensure_chat_exists(users, payload.chat_id)
+
     if len(payload.content.encode("utf-8")) > 4000:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Message must be at most 4000 bytes long.")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Message must be at most 4000 bytes long.")
 
     row = {
         "sender_id": current_user["id"],
         "content": payload.content.strip(),
+        "recipient_id": None if payload.chat_id == GENERAL_CHAT else payload.chat_id,
     }
 
     try:
@@ -200,4 +313,6 @@ def post_message(
     if not created:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not save the message.")
 
-    return to_message_out(created[0], current_user.get("display_name") or current_user.get("email") or None)
+    return to_message_out(
+        created[0], current_user.get("display_name") or current_user.get("email") or None
+    )

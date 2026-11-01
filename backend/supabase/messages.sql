@@ -10,8 +10,13 @@ create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references public.users(id) on delete cascade,
   content text not null,
-  sent_at timestamptz not null default now()
+  sent_at timestamptz not null default now(),
+  -- null keeps the message in the shared "general" room
+  recipient_id uuid references public.users(id) on delete cascade
 );
+
+-- Existing installs: add the direct-message column without losing rows.
+alter table public.messages add column if not exists recipient_id uuid references public.users(id) on delete cascade;
 
 create index if not exists messages_sent_at_idx on public.messages (sent_at);
 

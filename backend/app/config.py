@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     jwt_expires_minutes: int = 60 * 24
     # Comma-separated browser origins allowed to call the API.
     cors_origins: str = "http://localhost:8443,http://127.0.0.1:8443"
+    # SQLite file used when no Supabase credentials are set, so the API still
+    # runs. Leave empty to require Supabase and return 503 without it.
+    local_database: str = ".local-dev.db"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
