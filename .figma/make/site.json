@@ -1,0 +1,10 @@
+{
+  "description": "A streamlined chat app for messaging with Bob, featuring timestamped conversations and quick message sending across desktop and mobile.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
